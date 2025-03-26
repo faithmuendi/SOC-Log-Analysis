@@ -1,40 +1,73 @@
-import pandas as pd
-import re
+import re  # Regular expressions for pattern matching
+import pandas as pd  # Data analysis library
+import matplotlib.pyplot as plt  # Data visualization
+import seaborn as sns  # Enhancing plots
 
-# Path to the log file
-log_file_path = "logs/auth.log"
+# Define log file path
+log_file = "logs/auth.log"
 
-# Read the log file
-try:
-    with open(log_file_path, "r") as file:
-        logs = file.readlines()
-except FileNotFoundError:
-    print(f"Error: Log file '{log_file_path}' not found.")
-    exit()
+# Define regex patterns for failed and successful logins
+failed_login_pattern = r"Failed password for (invalid user )?(\S+) from (\d+\.\d+\.\d+\.\d+)"
+successful_login_pattern = r"Accepted password for (\S+) from (\d+\.\d+\.\d+\.\d+)"
 
-# Define a pattern to extract failed login attempts
-failed_login_pattern = re.compile(r"Failed password for (\w+) from (\d+\.\d+\.\d+\.\d+)")
+# Initialize lists to store login attempts
+failed_logins = []
+successful_logins = []
 
-# Store extracted data
-failed_attempts = []
+# Open and read the log file
+with open(log_file, "r") as file:
+    for line in file:
+        failed_match = re.search(failed_login_pattern, line)
+        success_match = re.search(successful_login_pattern, line)
 
-for line in logs:
-    match = failed_login_pattern.search(line)
-    if match:
-        username = match.group(1)
-        ip_address = match.group(2)
-        failed_attempts.append({"Username": username, "IP Address": ip_address})
+        if failed_match:
+            username = failed_match.group(2)  # Extract username
+            ip_address = failed_match.group(3)  # Extract IP address
+            failed_logins.append((username, ip_address))  # Add to list
 
-# Convert to DataFrame
-df = pd.DataFrame(failed_attempts)
+        if success_match:
+            username = success_match.group(1)  # Extract username
+            ip_address = success_match.group(2)  # Extract IP address
+            successful_logins.append((username, ip_address))  # Add to list
 
-# Display summary
-if not df.empty:
-    print("\nSummary of Failed Login Attempts:")
-    print(df.value_counts().reset_index().rename(columns={0: "Count"}))
-else:
-    print("\nNo failed login attempts found.")
+# Convert to DataFrames
+df_failed = pd.DataFrame(failed_logins, columns=["Username", "IP Address"])
+df_success = pd.DataFrame(successful_logins, columns=["Username", "IP Address"])
 
-# Save results to CSV
-df.to_csv("failed_logins.csv", index=False)
-print("\nResults saved to 'failed_logins.csv'.")
+# **Enhancement 1: Count failed/successful login attempts per user/IP**
+df_failed_count = df_failed.groupby(["Username", "IP Address"]).size().reset_index(name="Attempts")
+df_success_count = df_success.groupby(["Username", "IP Address"]).size().reset_index(name="Attempts")
+
+# Save results to CSV files
+df_failed_count.to_csv("failed_logins.csv", index=False)
+df_success_count.to_csv("successful_logins.csv", index=False)
+
+# Print Summary
+print("\n🔴 **Failed Logins Summary:**")
+print(df_failed_count.sort_values(by="Attempts", ascending=False).head(10))  # Show top 10 attackers
+
+print("\n🟢 **Successful Logins Summary:**")
+print(df_success_count.sort_values(by="Attempts", ascending=False).head(10))  # Show top 10 successful logins
+
+# **Enhancement 2: Data Visualization**
+plt.figure(figsize=(12, 6))
+
+# Bar plot for failed logins
+sns.barplot(x="IP Address", y="Attempts", hue="Username", data=df_failed_count.sort_values(by="Attempts", ascending=False).head(10))
+plt.xlabel("IP Address")
+plt.ylabel("Failed Login Attempts")
+plt.title("Top 10 Most Attacked Usernames/IPs")
+plt.xticks(rotation=45)
+plt.savefig("failed_logins_plot.png")
+plt.show()
+
+# Bar plot for successful logins
+plt.figure(figsize=(12, 6))
+sns.barplot(x="IP Address", y="Attempts", hue="Username", data=df_success_count.sort_values(by="Attempts", ascending=False).head(10))
+plt.xlabel("IP Address")
+plt.ylabel("Successful Login Attempts")
+plt.title("Top 10 Most Successful Logins")
+plt.xticks(rotation=45)
+plt.savefig("successful_logins_plot.png")
+plt.show()
+
